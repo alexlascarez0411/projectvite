@@ -1,1 +1,0 @@
-console.log("¡Proyecto Vite cargado con éxito!");
