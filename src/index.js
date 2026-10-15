@@ -1,50 +1,29 @@
-const PLACEHOLDER_IMAGE = "https://placeholder.co/210x295";
+import "./index.css";
+import { getShowData, getEpisodeList } from "./services/tvmaze.js";
 
-// 1. Buscar ID de una serie por su nombre en TVMaze
-const getShowIdByName = async (name) => {
-  const URL = `https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(name)}`;
-  const data = await fetch(URL).then((res) => res.json());
-  return data.id;
-};
-
-// 2. Obtener datos básicos de la serie por su ID
-const getShowData = async (id) => {
-  const URL = `https://api.tvmaze.com/shows/${id}`;
-  const data = await fetch(URL).then((res) => res.json());
-
-  return {
-    name: data.name,
-    rating: data.rating,
-    image: data.image?.medium ?? PLACEHOLDER_IMAGE,
-  };
-};
-
-// 3. Obtener episodios y agruparlos por temporada
-const getEpisodeList = async (id) => {
-  const URL = `https://api.tvmaze.com/shows/${id}/episodes`;
-  const episodes = await fetch(URL).then((res) => res.json());
-
-  const episodeList = episodes.map((episode) => ({
-    number: episode.number,
-    season: episode.season,
-    rating: episode.rating.average,
-  }));
-
-  const episodesBySeason = Object.groupBy(
-    episodeList,
-    (episode) => episode.season
-  );
-
-  return episodesBySeason;
-};
-
-// 4. Renderizado en el DOM
 const $header = document.querySelector("header");
 const $episodes = document.querySelector(".episodes");
 
 const createEpisodeHTML = (episode) => {
   const ratingFloor = episode.rating ? Math.floor(episode.rating) : 0;
-  return `<div class="episode episode-${episode.number} rating-${ratingFloor}">${episode.number}</div>`;
+  const ratingText = episode.rating ? episode.rating : "Sin calificar";
+  return `<div class="episode episode-${episode.number} rating-${ratingFloor}" title="Episodio ${episode.number} - Puntuación: ${ratingText}">${episode.number}</div>`;
+};
+
+const createLegendHTML = () => {
+  return `
+    <div class="rating-legend">
+      <span class="legend-title">Escala de Calificación:</span>
+      <div class="legend-items">
+        <span class="legend-item rating-2">1-3 Malo</span>
+        <span class="legend-item rating-5">4-5 Regular</span>
+        <span class="legend-item rating-6">6 Aceptable</span>
+        <span class="legend-item rating-7">7 Bueno</span>
+        <span class="legend-item rating-8">8-9 Muy bueno</span>
+        <span class="legend-item rating-10">10 Excelente</span>
+      </div>
+    </div>
+  `;
 };
 
 const createSeasonHTML = (data, number) => {
@@ -52,34 +31,70 @@ const createSeasonHTML = (data, number) => {
   return `
     <article class="season">
       <header class="season-header">T${number}</header>
-      ${episodesHTML}
+      <div class="season-episodes">
+        ${episodesHTML}
+      </div>
     </article>
   `;
 };
 
-async function init() {
-  // Puedes usar una búsqueda por nombre o pasar el ID directamente
-  // Ejemplo por ID directo:
-  const showId = "2993"; // Stranger Things
+async function renderShow(id) {
+  try {
+    if ($header) {$header.innerHTML = `<div class="loading">Cargando serie...</div>`;
+    }
+    if ($episodes) {$episodes.innerHTML = "";
+    }
 
-  // Ejemplo por nombre:
-  // const showId = await getShowIdByName("Stranger Things");
+    const show = await getShowData(id);
+    const seasons = await getEpisodeList(id);
 
-  const show = await getShowData(showId);
-  const seasons = await getEpisodeList(showId);
+    if ($header) {$header.innerHTML = `
+        <div class="show-info">
+          <div class="show-details">
+            <img class="poster" src="${show.image}" alt="${show.name}">
+            <div class="show-text">
+              <h1>${show.name}</h1>
+            </div>
+          </div>
+          <form id="search-form" class="search-form">
+            <input type="number" id="show-id" placeholder="ID de serie..." value="${id}" required />
+            <button type="submit">Buscar ID</button>
+          </form>
+        </div>
+        ${createLegendHTML()}
+      `;
 
-  if ($header) {$header.innerHTML = `
-      <img class="poster" src="${show.image}" alt="${show.name}">
-      <h1>${show.name}</h1>
-    `;
-  }
+      document.querySelector("#search-form")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const newId = document.querySelector("#show-id").value.trim();
+        if (newId) renderShow(newId);
+      });
+    }
 
-  if ($episodes) {
-    const list = Object.values(seasons).map((season, index) =>
-      createSeasonHTML(season, index + 1)
-    );
-    $episodes.innerHTML = list.join("");
+    if ($episodes) {
+      const list = Object.values(seasons).map((season, index) =>
+        createSeasonHTML(season, index + 1)
+      );
+      $episodes.innerHTML = list.join("");
+    }
+  } catch (error) {
+    if ($header) {$header.innerHTML = `
+        <div class="error-box">
+          <p>⚠️ No se encontró la serie con el ID: <strong>${id}</strong></p>
+          <form id="search-form" class="search-form">
+            <input type="number" id="show-id" placeholder="Ingresa otro ID..." required />
+            <button type="submit">Buscar ID</button>
+          </form>
+        </div>
+      `;
+      document.querySelector("#search-form")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const newId = document.querySelector("#show-id").value.trim();
+        if (newId) renderShow(newId);
+      });
+    }
+    if ($episodes)$episodes.innerHTML = "";
   }
 }
 
-init();
+renderShow("2993");
